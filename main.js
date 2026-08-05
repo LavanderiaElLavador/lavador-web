@@ -651,9 +651,12 @@
         if (reveal) reveal.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" });
       }
 
+      function stepsCompleted() {
+        return steps.length > 0 && steps.every(function (s) { return done[s.dataset.cuponStep]; });
+      }
+
       function checkAll() {
-        var all = steps.length > 0 && steps.every(function (s) { return done[s.dataset.cuponStep]; });
-        if (!all) return;
+        if (!stepsCompleted()) return;
         if (identified) showCode();
         else showIdForm();
       }
@@ -710,6 +713,7 @@
       if (idForm) {
         idForm.addEventListener("submit", function (e) {
           e.preventDefault();
+          if (!stepsCompleted()) return;
           var nombre = (idForm.elements.nombre.value || "").trim();
           var telRaw = (idForm.elements.telefono.value || "").trim();
           var telDigits = telRaw.replace(/\D/g, "");
