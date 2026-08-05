@@ -552,6 +552,208 @@
     }, { passive: true });
   }
 
+  /* ---- Promo: carga la config del cupón desde /promo.txt ---- */
+  function parsePromo(text) {
+    var promo = {};
+    text.split(/\r?\n/).forEach(function (line) {
+      line = line.trim();
+      if (!line || line.charAt(0) === "#") return;
+      var i = line.indexOf("=");
+      if (i === -1) return;
+      promo[line.slice(0, i).trim().toUpperCase()] = line.slice(i + 1).trim();
+    });
+    return promo;
+  }
+
+  function loadPromo(cb) {
+    fetch("/promo.txt", { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.text() : Promise.reject(); })
+      .then(function (text) { cb(parsePromo(text)); })
+      .catch(function () { cb(null); });
+  }
+
+  /* ---- Tarjetita fija del cupón: como el botón de WhatsApp, se queda
+     en pantalla todo el tiempo mientras la promo esté activa (sin botón
+     de cerrar) para que siempre se pueda volver a ella. ---- */
+  function initPromoBanner() {
+    var badge = $("[data-promo-modal]");
+    if (!badge) return;
+
+    loadPromo(function (promo) {
+      if (!promo || promo.ACTIVO !== "SI") return;
+      var title = $("[data-promo-title]", badge);
+      if (title && promo.TITULO) title.textContent = promo.TITULO;
+
+      setTimeout(function () {
+        badge.classList.add("is-open");
+        badge.setAttribute("aria-hidden", "false");
+      }, 1200);
+    });
+  }
+
+  /* ---- Página /cupon/: pasos para desbloquear el código.
+     Al abrir cada red/reseña se activa una espera mínima antes de poder
+     confirmar "Ya lo hice". Al completar los 3 pasos se pide nombre y
+     teléfono: eso se manda a un webhook de n8n que lo reenvía a Telegram,
+     solo el negocio lo ve, y sirve para confirmar, si alguien más intenta
+     usar el código, que coincide con quien lo reclamó. ---- */
+  function initCuponPage() {
+    var page = $("[data-cupon-page]");
+    if (!page) return;
+    var loading = $("[data-cupon-loading]", page);
+    var inactive = $("[data-cupon-inactive]", page);
+    var active = $("[data-cupon-active]", page);
+    var steps = $$("[data-cupon-step]", page);
+    var reveal = $("[data-cupon-reveal]", page);
+    var lockEl = $("[data-cupon-lock]", page);
+    var idForm = $("[data-cupon-id-form]", page);
+    var idError = $("[data-cupon-id-error]", page);
+    var contentEl = $("[data-cupon-content]", page);
+    var codeEl = $("[data-cupon-code]", page);
+    var discountEl = $("[data-cupon-discount]", page);
+    var copyBtn = $("[data-cupon-copy]", page);
+    var WAIT_MS = 8000;
+
+    loadPromo(function (promo) {
+      if (loading) loading.hidden = true;
+      if (!promo || promo.ACTIVO !== "SI") {
+        if (inactive) inactive.hidden = false;
+        return;
+      }
+      if (active) active.hidden = false;
+
+      var code = promo.CODIGO || "";
+      var discount = promo.DESCUENTO || "";
+      if (discountEl) discountEl.textContent = discount;
+
+      var stepsKey = "cuponPasos:" + code;
+      var idKey = "cuponId:" + code;
+      var done = {};
+      try { done = JSON.parse(localStorage.getItem(stepsKey) || "{}"); } catch (e) { done = {}; }
+      var identified = null;
+      try { identified = JSON.parse(localStorage.getItem(idKey) || "null"); } catch (e) { identified = null; }
+
+      function persistSteps() {
+        try { localStorage.setItem(stepsKey, JSON.stringify(done)); } catch (e) {}
+      }
+
+      function showCode() {
+        if (codeEl) codeEl.textContent = code;
+        if (lockEl) lockEl.hidden = true;
+        if (idForm) idForm.hidden = true;
+        if (contentEl) contentEl.hidden = false;
+        if (reveal) reveal.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" });
+      }
+
+      function showIdForm() {
+        if (lockEl) lockEl.hidden = true;
+        if (idForm) idForm.hidden = false;
+        if (reveal) reveal.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" });
+      }
+
+      function checkAll() {
+        var all = steps.length > 0 && steps.every(function (s) { return done[s.dataset.cuponStep]; });
+        if (!all) return;
+        if (identified) showCode();
+        else showIdForm();
+      }
+
+      steps.forEach(function (step) {
+        var key = step.dataset.cuponStep;
+        var visit = $("[data-cupon-visit]", step);
+        var confirmBtn = $("[data-cupon-confirm]", step);
+        var hint = $("[data-cupon-hint]", step);
+        var timer = null;
+
+        function arm() {
+          if (!confirmBtn || done[key]) return;
+          clearInterval(timer);
+          confirmBtn.disabled = true;
+          if (hint) { hint.hidden = false; hint.textContent = "Ábrelo, míralo y vuelve aquí…"; }
+          var remaining = Math.ceil(WAIT_MS / 1000);
+          confirmBtn.textContent = "Espera " + remaining + "s…";
+          timer = setInterval(function () {
+            remaining--;
+            if (remaining <= 0) {
+              clearInterval(timer);
+              confirmBtn.disabled = false;
+              confirmBtn.textContent = "Ya lo hice";
+              if (hint) hint.hidden = true;
+            } else {
+              confirmBtn.textContent = "Espera " + remaining + "s…";
+            }
+          }, 1000);
+        }
+
+        if (done[key]) {
+          step.classList.add("is-done");
+          if (confirmBtn) confirmBtn.textContent = "Ya lo hice";
+        } else if (confirmBtn) {
+          confirmBtn.disabled = true;
+        }
+
+        if (visit) visit.addEventListener("click", arm);
+        if (confirmBtn) {
+          confirmBtn.addEventListener("click", function () {
+            if (confirmBtn.disabled) return;
+            clearInterval(timer);
+            done[key] = true;
+            step.classList.add("is-done");
+            confirmBtn.textContent = "Ya lo hice";
+            persistSteps();
+            checkAll();
+          });
+        }
+      });
+      checkAll();
+
+      if (idForm) {
+        idForm.addEventListener("submit", function (e) {
+          e.preventDefault();
+          var nombre = (idForm.elements.nombre.value || "").trim();
+          var telRaw = (idForm.elements.telefono.value || "").trim();
+          var telDigits = telRaw.replace(/\D/g, "");
+          if (!nombre || telDigits.length < 7) {
+            if (idError) idError.hidden = false;
+            return;
+          }
+          if (idError) idError.hidden = true;
+
+          var ref = String(Math.floor(1000 + Math.random() * 9000));
+          identified = { nombre: nombre, telefono: telRaw, ref: ref, ts: Date.now() };
+          try { localStorage.setItem(idKey, JSON.stringify(identified)); } catch (err) {}
+
+          if (promo.WEBHOOK) {
+            fetch(promo.WEBHOOK, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                codigo: code,
+                descuento: discount,
+                ref: ref,
+                nombre: nombre,
+                telefono: telRaw
+              })
+            }).catch(function (err) { console.warn("[cupon webhook]", err); });
+          }
+
+          showCode();
+        });
+      }
+
+      if (copyBtn) {
+        copyBtn.addEventListener("click", function () {
+          if (!navigator.clipboard || !navigator.clipboard.writeText) return;
+          navigator.clipboard.writeText(code).then(function () {
+            var old = copyBtn.textContent;
+            copyBtn.textContent = "¡Copiado!";
+            setTimeout(function () { copyBtn.textContent = old; }, 1800);
+          }).catch(function () {});
+        });
+      }
+    });
+  }
+
   function boot() {
     document.documentElement.classList.add("reveal-ready");
     safe(initNav, "initNav");
@@ -569,6 +771,8 @@
     safe(initHeroEntrance, "initHeroEntrance");
     safe(initHeroFX, "initHeroFX");
     safe(initHeroAurora, "initHeroAurora");
+    safe(initPromoBanner, "initPromoBanner");
+    safe(initCuponPage, "initCuponPage");
     document.documentElement.classList.add("is-ready");
   }
 

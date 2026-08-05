@@ -1,0 +1,18 @@
+# Configuración del cupón de descuento.
+# Edita los valores después del "=" y guarda. Los cambios se ven en la web
+# de inmediato (no hay que tocar nada más de la página).
+#
+# ACTIVO: SI para mostrar el aviso y la página del cupón, NO para ocultarlos.
+# CODIGO: el código que el cliente te dirá y que tú aplicas en tu sistema de facturación.
+# DESCUENTO: el texto que se muestra como premio, por ejemplo "20% de descuento" o "RD$200 de descuento".
+# TITULO: el texto corto de la tarjetita del cupón en el inicio (que sea cortico, es una tarjeta pequeña).
+# WEBHOOK: la URL de producción de tu workflow de n8n (nodo Webhook). Cuando
+#          alguien reclama el cupón, se le manda nombre/teléfono/código/referencia
+#          a esa URL para que n8n lo reenvíe a tu Telegram. Si la dejas vacía,
+#          el cupón funciona igual pero no te llega el aviso a Telegram.
+
+ACTIVO=SI
+CODIGO=LAVA20
+DESCUENTO=20% de descuento
+TITULO=¡Gánate un cupón!
+WEBHOOK=https://n8n-lavanderia.onrender.com/webhook/cupon-lavador

@@ -1,0 +1,49 @@
+{
+  "name": "Cupón El Lavador → Telegram",
+  "nodes": [
+    {
+      "id": "webhook1",
+      "name": "Webhook cupón",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [260, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cupon-lavador",
+        "responseMode": "onReceived",
+        "options": {
+          "responseData": "recibido"
+        }
+      }
+    },
+    {
+      "id": "telegram1",
+      "name": "Enviar a Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [520, 300],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "PON_AQUI_TU_CHAT_ID",
+        "text": "=🎟️ Nuevo cupón reclamado\n\nCódigo: {{ $json.body.codigo }}\nReferencia: #{{ $json.body.ref }}\nNombre: {{ $json.body.nombre }}\nTeléfono: {{ $json.body.telefono }}",
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook cupón": {
+      "main": [
+        [
+          { "node": "Enviar a Telegram", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  }
+}
