@@ -190,6 +190,33 @@
     });
   }
 
+  /* ---- Botón "Cómo llegar" inteligente: en el celular abre el selector
+     nativo de apps de mapas (como cuando WhatsApp comparte una ubicación),
+     en vez de forzar Google/Waze/Apple. En escritorio se deja el link normal
+     a Google Maps que ya trae por defecto. ---- */
+  function initSmartMapLink() {
+    var links = $$("[data-smart-map]");
+    if (!links.length) return;
+    var ua = navigator.userAgent || "";
+    var isAndroid = /Android/i.test(ua);
+    var isIOS = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    if (!isAndroid && !isIOS) return;
+
+    links.forEach(function (a) {
+      var lat = a.dataset.mapLat, lng = a.dataset.mapLng, label = a.dataset.mapLabel || "";
+      if (!lat || !lng) return;
+      // En Android el texto es solo una etiqueta visual sobre el pin (geo: no busca nada).
+      // En iOS, en cambio, "q" sí dispara una búsqueda real — y como el negocio no está
+      // registrado en Apple Maps todavía, mandar el nombre ahí lo manda al lugar equivocado.
+      // Por eso en iOS solo van las coordenadas, sin nombre, hasta que se registre allá.
+      var url = isAndroid
+        ? "geo:" + lat + "," + lng + "?q=" + lat + "," + lng + "(" + encodeURIComponent(label) + ")"
+        : "https://maps.apple.com/?q=" + lat + "," + lng;
+      a.setAttribute("href", url);
+      a.removeAttribute("target");
+    });
+  }
+
   /* ---- Language tabs (politica.html) — progressive enhancement ---- */
   function initLangTabs() {
     var tabs = $$(".lang-tab");
@@ -775,6 +802,7 @@
     safe(initHeroEntrance, "initHeroEntrance");
     safe(initHeroFX, "initHeroFX");
     safe(initHeroAurora, "initHeroAurora");
+    safe(initSmartMapLink, "initSmartMapLink");
     safe(initPromoBanner, "initPromoBanner");
     safe(initCuponPage, "initCuponPage");
     document.documentElement.classList.add("is-ready");
